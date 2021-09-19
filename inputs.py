@@ -8,7 +8,7 @@ Mac OS X.
 
 """
 
-# Copyright (c) 2016, 2018: Zeth
+# Copyright (c) 2016, 2018, 2021: Zeth, Chase Kidder
 # All rights reserved.
 #
 # BSD Licence
@@ -2960,7 +2960,7 @@ class GamePad(InputDevice):
             0,
             int(left_motor * 65535),
             int(right_motor * 65535))
-        buf_conts = ioctl(self._write_device, 1076905344, inner_event)
+        buf_conts = ioctl(self._write_device, 1076643200, inner_event)
         return int(codecs.encode(buf_conts[1:3], 'hex'), 16)
 
     def _set_vibration_nix(self, left_motor, right_motor, duration):
