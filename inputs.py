@@ -38,9 +38,10 @@ Mac OS X.
 # CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 # ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
-
 from __future__ import print_function
 from __future__ import division
+from __future__ import annotations
+from typing import Optional
 
 import os
 import sys
@@ -1285,7 +1286,7 @@ MAC_KEYS = (
 # We have yet to support force feedback but probably should
 # eventually:
 
-FORCE_FEEDBACK = ()  # Motor in gamepad
+FORCE_FEEDBACK = (((i, hex(i)) for i in range(0, 65536)))  # Motor in gamepad
 FORCE_FEEDBACK_STATUS = ()  # Status of motor
 
 POWER = ()  # Power switch
@@ -1299,7 +1300,7 @@ CURRENT = ()
 
 EVENT_MAP = (
     ('types', EVENT_TYPES),
-    ('type_codes', ((value, key) for key, value in EVENT_TYPES)),
+    ('type_codes', tuple((value, key) for key, value in EVENT_TYPES)),
     ('wincodes', WINCODES),
     ('specials', SPECIAL_DEVICES),
     ('xpad', XINPUT_MAPPING),
@@ -3652,51 +3653,34 @@ class MicroBitListener(BaseListener):
 devices = DeviceManager()  # pylint: disable=invalid-name
 
 
-def get_key():
+def get_key(index:Optional[int] = None):
     """Get a single keypress from a keyboard."""
     try:
-        keyboard = devices.keyboards[0]
+        keyboard = devices.keyboards[0 if (index is None) else index]
     except IndexError:
         raise UnpluggedError("No keyboard found.")
     return keyboard.read()
 
-def get_key(index):
-    """Get a single keypress from a keyboard."""
-    try:
-        keyboard = devices.keyboards[index]
-    except IndexError:
-        raise UnpluggedError("No keyboard found.")
-    return keyboard.read()
-
-def get_mouse():
+def get_mouse(index:Optional[int] = None):
     """Get a single movement or click from a mouse."""
     try:
-        mouse = devices.mice[0]
-    except IndexError:
-        raise UnpluggedError("No mice found.")
-    return mouse.read()
-
-def get_mouse(index):
-    """Get a single movement or click from a mouse."""
-    try:
-        mouse = devices.mice[index]
+        mouse = devices.mice[0 if (index is None) else index]
     except IndexError:
         raise UnpluggedError("No mice found.")
     return mouse.read()
 
 
-def get_gamepad():
+def get_gamepad(index:Optional[int] = None):
     """Get a single action from a gamepad."""
     try:
-        gamepad = devices.gamepads[0]
+        gamepad = devices.gamepads[0 if (index is None) else index]
     except IndexError:
         raise UnpluggedError("No gamepad found.")
     return gamepad.read()
 
-def get_gamepad(index):
-    """Get a single action from a gamepad."""
-    try:
-        gamepad = devices.gamepads[index]
-    except IndexError:
-        raise UnpluggedError("No gamepad found.")
-    return gamepad.read()
+
+
+def rescan_devices():
+    """Rescan all connected devices."""
+    global devices
+    devices = DeviceManager()
