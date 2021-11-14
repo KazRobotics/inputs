@@ -3660,6 +3660,13 @@ def get_key():
         raise UnpluggedError("No keyboard found.")
     return keyboard.read()
 
+def get_key(index):
+    """Get a single keypress from a keyboard."""
+    try:
+        keyboard = devices.keyboards[index]
+    except IndexError:
+        raise UnpluggedError("No keyboard found.")
+    return keyboard.read()
 
 def get_mouse():
     """Get a single movement or click from a mouse."""
@@ -3669,11 +3676,27 @@ def get_mouse():
         raise UnpluggedError("No mice found.")
     return mouse.read()
 
+def get_mouse(index):
+    """Get a single movement or click from a mouse."""
+    try:
+        mouse = devices.mice[index]
+    except IndexError:
+        raise UnpluggedError("No mice found.")
+    return mouse.read()
+
 
 def get_gamepad():
     """Get a single action from a gamepad."""
     try:
         gamepad = devices.gamepads[0]
+    except IndexError:
+        raise UnpluggedError("No gamepad found.")
+    return gamepad.read()
+
+def get_gamepad(index):
+    """Get a single action from a gamepad."""
+    try:
+        gamepad = devices.gamepads[index]
     except IndexError:
         raise UnpluggedError("No gamepad found.")
     return gamepad.read()
