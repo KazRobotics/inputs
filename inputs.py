@@ -2420,7 +2420,7 @@ class InputDevice(object):  # pylint: disable=useless-object-inheritance
     def _set_name(self):
         if NIX:
             with open("/sys/class/input/%s/device/name" %
-                      self.get_char_name()) as name_file:
+                    self.get_char_name(), errors="ignore") as name_file:
                 self.name = name_file.read().strip()
             self.leds = []
 
@@ -3427,7 +3427,7 @@ class DeviceManager(object):  # pylint: disable=useless-object-inheritance
                 continue
             name_file = os.path.join(eventdir, 'device', 'name')
             if os.path.isfile(name_file):
-                with open(name_file) as name_file:
+                with open(name_file, errors="ignore") as name_file:
                     device_name = name_file.read().strip()
                     if device_name in self.codes['specials']:
                         self._parse_device_path(
