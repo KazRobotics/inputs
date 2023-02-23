@@ -8,7 +8,7 @@ Mac OS X.
 
 """
 
-# Copyright (c) 2016, 2018: Zeth
+# Copyright (c) 2016, 2018, 2021: Zeth, Chase Kidder
 # All rights reserved.
 #
 # BSD Licence
@@ -80,6 +80,10 @@ else:
 
 if NIX:
     from fcntl import ioctl
+# Fix blocking in event read loop. (Chase Kidder 2021)
+# Code by: Erik Orjehag
+# https://github.com/zeth/inputs/issues/7
+    import fcntl
 
 OLD = sys.version_info < (3, 4)
 
@@ -1285,7 +1289,11 @@ MAC_KEYS = (
 # We have yet to support force feedback but probably should
 # eventually:
 
-FORCE_FEEDBACK = ()  # Motor in gamepad
+# Fixed FORCE_FEEDBACK error (Chase Kidder 2021)
+# Code by: Lasse F. Sortland aka. mrKallah
+# https://github.com/zeth/inputs/pull/100
+
+FORCE_FEEDBACK = (((i, hex(i)) for i in range(0, 65536)))  # Motor in gamepad
 FORCE_FEEDBACK_STATUS = ()  # Status of motor
 
 POWER = ()  # Power switch
@@ -1296,10 +1304,13 @@ POWER = ()  # Power switch
 MAX = ()
 CURRENT = ()
 
+# Add ability to rescan for devices. (Chase Kidder 2021)
+# Code by: j3kestrel
+# https://github.com/zeth/inputs/pull/99
 
 EVENT_MAP = (
     ('types', EVENT_TYPES),
-    ('type_codes', ((value, key) for key, value in EVENT_TYPES)),
+    ('type_codes', tuple((value, key) for key, value in EVENT_TYPES)),
     ('wincodes', WINCODES),
     ('specials', SPECIAL_DEVICES),
     ('xpad', XINPUT_MAPPING),
@@ -2445,6 +2456,10 @@ class InputDevice(object):  # pylint: disable=useless-object-inheritance
             self.__class__.__name__,
             self._device_path)
 
+# Fix blocking in event read loop. (Chase Kidder 2021)
+# Code by: Erik Orjehag
+# https://github.com/zeth/inputs/issues/7
+
     @property
     def _character_device(self):
         if not self._character_file:
@@ -2452,8 +2467,11 @@ class InputDevice(object):  # pylint: disable=useless-object-inheritance
                 self._character_file = io.BytesIO()
                 return self._character_file
             try:
-                self._character_file = io.open(
-                    self._character_device_path, 'rb')
+                self._character_file = io.open(self._character_device_path, 'rb')
+                fd = self._character_file.fileno()
+                flag = fcntl.fcntl(fd, fcntl.F_GETFL)
+                fcntl.fcntl(fd, fcntl.F_SETFL, flag | os.O_NONBLOCK)
+
             except PermissionError:
                 # Python 3
                 raise PermissionError(PERMISSIONS_ERROR_TEXT)
@@ -2960,7 +2978,7 @@ class GamePad(InputDevice):
             0,
             int(left_motor * 65535),
             int(right_motor * 65535))
-        buf_conts = ioctl(self._write_device, 1076905344, inner_event)
+        buf_conts = ioctl(self._write_device, 1076643200, inner_event)
         return int(codecs.encode(buf_conts[1:3], 'hex'), 16)
 
     def _set_vibration_nix(self, left_motor, right_motor, duration):
@@ -3131,6 +3149,10 @@ class GamepadLED(LED):
         self.device = None
         self.gamepad = None
         super(GamepadLED, self).__init__(manager, path, name)
+
+# Fix "AttributeError: 'NoneType' object has no attribute 'get_char_device_path'"(Chase Kidder 2021)
+# Code by: Jonathan Spyreas aka narashbringer
+# https://github.com/zeth/inputs/pull/90
 
     def _post_init(self):
         self._match_device()
@@ -3677,3 +3699,12 @@ def get_gamepad():
     except IndexError:
         raise UnpluggedError("No gamepad found.")
     return gamepad.read()
+
+# Add ability to rescan for devices. (Chase Kidder 2021)
+# Code by: j3kestrel
+# https://github.com/zeth/inputs/pull/99
+
+def rescan_devices():
+    """Rescan all connected devices."""
+    global devices
+    devices = DeviceManager()
