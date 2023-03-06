@@ -1,8 +1,8 @@
 [tool.poetry]
 name = "inputs"
-version = "0.5.2"
+version = "0.5.3"
 description = ""
-authors = ["Fork from Zeth"]
+authors = ["Forked from Zeth, with contributions from several good folks"]
 
 [tool.poetry.dependencies]
 python = "^3.8"

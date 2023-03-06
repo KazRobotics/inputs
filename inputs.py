@@ -8,7 +8,7 @@ Mac OS X.
 
 """
 
-# Copyright (c) 2016, 2018, 2021: Zeth, Chase Kidder
+# Copyright (c) 2016, 2018, 2021: Zeth, Chase Kidder, Lexou
 # All rights reserved.
 #
 # BSD Licence
@@ -41,7 +41,7 @@ Mac OS X.
 from __future__ import print_function
 from __future__ import division
 from __future__ import annotations
-from typing import Optional
+from typing import cast, Generator, Type, Optional
 
 import os
 import sys
@@ -56,34 +56,42 @@ from warnings import warn
 from itertools import count
 from operator import itemgetter
 from multiprocessing import Process, Pipe
+
 import ctypes
 
-__version__ = "0.5"
 
-WIN = True if platform.system() == 'Windows' else False
-MAC = True if platform.system() == 'Darwin' else False
-NIX = True if platform.system() == 'Linux' else False
 
+__version__ = "0.5.3"
+
+
+
+WIN:bool = True if platform.system() == 'Windows' else False
+MAC:bool = True if platform.system() == 'Darwin' else False
+NIX:bool = True if platform.system() == 'Linux' else False
+
+DWORD  : Type[object]
+HANDLE : Type[object]
+WPARAM : Type[object]
+LPARAM : Type[object]
+MSG    : Type[object]
 if WIN:
     # pylint: disable=wrong-import-position
     import ctypes.wintypes
-    DWORD = ctypes.wintypes.DWORD
+    DWORD  = ctypes.wintypes.DWORD
     HANDLE = ctypes.wintypes.HANDLE
     WPARAM = ctypes.wintypes.WPARAM
     LPARAM = ctypes.wintypes.WPARAM
-    MSG = ctypes.wintypes.MSG
+    MSG    = ctypes.wintypes.MSG
 else:
-    DWORD = ctypes.c_ulong
+    DWORD  = ctypes.c_ulong
     HANDLE = ctypes.c_void_p
     WPARAM = ctypes.c_ulonglong
     LPARAM = ctypes.c_ulonglong
-    MSG = ctypes.Structure
+    MSG    = ctypes.Structure
 
 if NIX:
     from fcntl import ioctl
-# Fix blocking in event read loop. (Chase Kidder 2021)
-# Code by: Erik Orjehag
-# https://github.com/zeth/inputs/issues/7
+    # Fix blocking in event read loop. (fix by: Erik Orjehag) https://github.com/zeth/inputs/issues/7
     import fcntl
 
 OLD = sys.version_info < (3, 4)
@@ -101,23 +109,18 @@ EVENT_FORMAT = str('llHHi')
 EVENT_SIZE = struct.calcsize(EVENT_FORMAT)
 
 
-def chunks(raw):
+def chunks(raw:bytes) -> Generator[tuple[object,...], None, None]:
     """Yield successive EVENT_SIZE sized chunks from raw."""
     for i in range(0, len(raw), EVENT_SIZE):
         yield struct.unpack(EVENT_FORMAT, raw[i:i+EVENT_SIZE])
 
 
-if OLD:
-    def iter_unpack(raw):
-        """Yield successive EVENT_SIZE chunks from message."""
-        return chunks(raw)
-else:
-    def iter_unpack(raw):
-        """Yield successive EVENT_SIZE chunks from message."""
-        return struct.iter_unpack(EVENT_FORMAT, raw)
+def iter_unpack(raw:bytes):
+    """Yield successive EVENT_SIZE chunks from message."""
+    return chunks(raw) if OLD else struct.iter_unpack(EVENT_FORMAT, raw)
 
 
-def convert_timeval(seconds_since_epoch):
+def convert_timeval(seconds_since_epoch:float) -> tuple[int,int]:
     """Convert time into C style timeval."""
     frac, whole = math.modf(seconds_since_epoch)
     microseconds = math.floor(frac * 1000000)
@@ -126,12 +129,9 @@ def convert_timeval(seconds_since_epoch):
 
 
 SPECIAL_DEVICES = (
-    ("Raspberry Pi Sense HAT Joystick",
-     "/dev/input/by-id/gpio-Raspberry_Pi_Sense_HAT_Joystick-event-kbd"),
-    ("Nintendo Wii Remote",
-     "/dev/input/by-id/bluetooth-Nintendo_Wii_Remote-event-joystick"),
-    ("FT5406 memory based driver",
-     "/dev/input/by-id/gpio-Raspberry_Pi_Touchscreen_Display-event-mouse"),
+    ("Raspberry Pi Sense HAT Joystick",  "/dev/input/by-id/gpio-Raspberry_Pi_Sense_HAT_Joystick-event-kbd"),
+    ("Nintendo Wii Remote",              "/dev/input/by-id/bluetooth-Nintendo_Wii_Remote-event-joystick"),
+    ("FT5406 memory based driver",       "/dev/input/by-id/gpio-Raspberry_Pi_Touchscreen_Display-event-mouse"),
 )
 
 XINPUT_MAPPING = (
@@ -1287,28 +1287,21 @@ MAC_KEYS = (
 )
 
 
-# We have yet to support force feedback but probably should
-# eventually:
+# We have yet to support force feedback but probably should eventually:
 
-# Fixed FORCE_FEEDBACK error (Chase Kidder 2021)
-# Code by: Lasse F. Sortland aka. mrKallah
-# https://github.com/zeth/inputs/pull/100
-
+# Fixed FORCE_FEEDBACK error (fix by: Lasse F. Sortland aka. mrKallah) https://github.com/zeth/inputs/pull/100
 FORCE_FEEDBACK = (((i, hex(i)) for i in range(0, 65536)))  # Motor in gamepad
 FORCE_FEEDBACK_STATUS = ()  # Status of motor
 
 POWER = ()  # Power switch
 
-# These two are internal workings of evdev we probably will never care
-# about.
+# These two are internal workings of evdev we probably will never care about.
 
 MAX = ()
 CURRENT = ()
 
-# Add ability to rescan for devices. (Chase Kidder 2021)
-# Code by: j3kestrel
-# https://github.com/zeth/inputs/pull/99
 
+# Add ability to rescan for devices. (fix by: j3kestrel) https://github.com/zeth/inputs/pull/99
 EVENT_MAP = (
     ('types', EVENT_TYPES),
     ('type_codes', tuple((value, key) for key, value in EVENT_TYPES)),
@@ -1343,7 +1336,8 @@ APPKIT_MOUSE_PATH = "/dev/input/by-id/usb-AppKit_Mouse-event-mouse"
 
 
 class KBDLLHookStruct(ctypes.Structure):
-    """Contains information about a low-level keyboard input event.
+    """
+    Contains information about a low-level keyboard input event.
 
     For full details see Microsoft's documentation:
 
@@ -1358,7 +1352,8 @@ class KBDLLHookStruct(ctypes.Structure):
 
 
 class MSLLHookStruct(ctypes.Structure):
-    """Contains information about a low-level mouse input event.
+    """
+    Contains information about a low-level mouse input event.
 
     For full details see Microsoft's documentation:
 
@@ -1376,7 +1371,8 @@ class MSLLHookStruct(ctypes.Structure):
 
 
 class XinputGamepad(ctypes.Structure):
-    """Describes the current state of the Xbox 360 Controller.
+    """
+    Describes the current state of the Xbox 360 Controller.
 
     For full details see Microsoft's documentation:
 
@@ -1397,7 +1393,8 @@ class XinputGamepad(ctypes.Structure):
 
 
 class XinputState(ctypes.Structure):
-    """Represents the state of a controller.
+    """
+    Represents the state of a controller.
 
     For full details see Microsoft's documentation:
 
@@ -1413,8 +1410,8 @@ class XinputState(ctypes.Structure):
 
 
 class XinputVibration(ctypes.Structure):
-    """Specifies motor speed levels for the vibration function of a
-    controller.
+    """
+    Specifies motor speed levels for the vibration function of a controller.
 
     For full details see Microsoft's documentation:
 
@@ -1430,9 +1427,11 @@ class XinputVibration(ctypes.Structure):
 if sys.version_info.major == 2:
     # pylint: disable=redefined-builtin
     class PermissionError(IOError):
-        """Raised when trying to run an operation without the adequate access
+        """
+        Raised when trying to run an operation without the adequate access
         rights - for example filesystem permissions. Corresponds to errno
-        EACCES and EPERM."""
+        EACCES and EPERM.
+        """
 
 
 class UnpluggedError(RuntimeError):
@@ -1459,8 +1458,9 @@ class InputEvent(object):  # pylint: disable=useless-object-inheritance
     """A user event."""
     # pylint: disable=too-few-public-methods
     def __init__(self,
-                 device,
-                 event_info):
+        device,
+        event_info,
+    ) -> None:
         self.device = device
         self.timestamp = event_info["timestamp"]
         self.code = event_info["code"]
@@ -1469,12 +1469,17 @@ class InputEvent(object):  # pylint: disable=useless-object-inheritance
 
 
 class BaseListener(object):  # pylint: disable=useless-object-inheritance
-    """Loosely emulate Evdev keyboard behaviour on other platforms.
+    """
+    Loosely emulate Evdev keyboard behaviour on other platforms.
     Listen (hook in Windows terminology) for key events then buffer
     them in a pipe.
     """
 
-    def __init__(self, pipe, events=None, codes=None):
+    def __init__(self,
+        pipe,
+        events:Optional[list] = None,
+        codes = None,
+    ) -> None:
         self.pipe = pipe
         self.events = events if events else []
         self.codes = codes if codes else None
@@ -1508,10 +1513,11 @@ class BaseListener(object):  # pylint: disable=useless-object-inheritance
         self.timeval = self.get_timeval()
 
     def create_event_object(self,
-                            event_type,
-                            code,
-                            value,
-                            timeval=None):
+        event_type,
+        code,
+        value,
+        timeval:Optional[tuple[int,int]] = None,
+    ) -> bytes:
         """Create an evdev style structure."""
         if not timeval:
             self.update_timeval()
@@ -1523,11 +1529,11 @@ class BaseListener(object):  # pylint: disable=useless-object-inheritance
                 "We don't know what kind of event a %s is." % event_type)
 
         event = struct.pack(EVENT_FORMAT,
-                            timeval[0],
-                            timeval[1],
-                            event_code,
-                            code,
-                            value)
+            timeval[0] if timeval else 0,
+            timeval[1] if timeval else 0,
+            event_code,
+            code,
+            value)
         return event
 
     def write_to_pipe(self, event_list):
@@ -2379,10 +2385,12 @@ def mac_keyboard_process(pipe):
 class InputDevice(object):  # pylint: disable=useless-object-inheritance
     """A user input device."""
     # pylint: disable=too-many-instance-attributes
-    def __init__(self, manager,
-                 device_path=None,
-                 char_path_override=None,
-                 read_size=1):
+    def __init__(self,
+        manager,
+        device_path = None,
+        char_path_override = None,
+        read_size:int = 1,
+    ) -> None:
         self.read_size = read_size
         self.manager = manager
         self.__pipe = None
@@ -2457,9 +2465,6 @@ class InputDevice(object):  # pylint: disable=useless-object-inheritance
             self.__class__.__name__,
             self._device_path)
 
-# Fix blocking in event read loop. (Chase Kidder 2021)
-# Code by: Erik Orjehag
-# https://github.com/zeth/inputs/issues/7
 
     @property
     def _character_device(self):
@@ -2469,6 +2474,7 @@ class InputDevice(object):  # pylint: disable=useless-object-inheritance
                 return self._character_file
             try:
                 self._character_file = io.open(self._character_device_path, 'rb')
+                # Fix blocking in event read loop. (fix by: Erik Orjehag) https://github.com/zeth/inputs/issues/7
                 fd = self._character_file.fileno()
                 flag = fcntl.fcntl(fd, fcntl.F_GETFL)
                 fcntl.fcntl(fd, fcntl.F_SETFL, flag | os.O_NONBLOCK)
@@ -2515,11 +2521,17 @@ class InputDevice(object):  # pylint: disable=useless-object-inheritance
         if not data:
             return None
         evdev_objects = iter_unpack(data)
-        events = [self._make_event(*event) for event in evdev_objects]
+        events = [self._make_event(*event) for event in evdev_objects] #type:ignore
         return events
 
     # pylint: disable=too-many-arguments
-    def _make_event(self, tv_sec, tv_usec, ev_type, code, value):
+    def _make_event(self,
+        tv_sec:int,
+        tv_usec:int,
+        ev_type,
+        code,
+        value,
+    ) -> InputEvent:
         """Create a friendly Python object from an evdev style event."""
         event_type = self.manager.get_event_type(ev_type)
         eventinfo = {
@@ -2663,11 +2675,12 @@ def delay_and_stop(duration, dll, device_number):
 
 class GamePad(InputDevice):
     """A gamepad or other joystick-like device."""
-    def __init__(self, manager, device_path,
-                 char_path_override=None):
-        super(GamePad, self).__init__(manager,
-                                      device_path,
-                                      char_path_override)
+    def __init__(self,
+        manager,
+        device_path,
+        char_path_override=None,
+    ) -> None:
+        super(GamePad, self).__init__(manager, device_path, char_path_override)
         self._write_file = None
         self.__device_number = None
         if WIN:
@@ -3013,7 +3026,7 @@ class OtherDevice(InputDevice):
 
 class LED(object):  # pylint: disable=useless-object-inheritance
     """A light source."""
-    def __init__(self, manager, path, name):
+    def __init__(self, manager, path, name) -> None:
         self.manager = manager
         self.path = path
         self.name = name
@@ -3094,7 +3107,7 @@ class LED(object):  # pylint: disable=useless-object-inheritance
 
 class SystemLED(LED):
     """An LED on your system e.g. caps lock."""
-    def __init__(self, manager, path, name):
+    def __init__(self, manager, path, name) -> None:
         self.code = None
         self.device_path = None
         self.device = None
@@ -3145,18 +3158,16 @@ class SystemLED(LED):
 
 class GamepadLED(LED):
     """A light source on a gamepad."""
-    def __init__(self, manager, path, name):
+    def __init__(self, manager, path, name) -> None:
         self.code = None
         self.device = None
         self.gamepad = None
         super(GamepadLED, self).__init__(manager, path, name)
 
-# Fix "AttributeError: 'NoneType' object has no attribute 'get_char_device_path'"(Chase Kidder 2021)
-# Code by: Jonathan Spyreas aka narashbringer
-# https://github.com/zeth/inputs/pull/90
 
     def _post_init(self):
         self._match_device()
+        # Fix "AttributeError: 'NoneType' object has no attribute 'get_char_device_path'"(fix by: Jonathan Spyreas aka narashbringer) https://github.com/zeth/inputs/pull/90
         self._character_device_path = self.gamepad.get_char_device_path() if self.gamepad else None
 
     def _match_device(self):
@@ -3189,7 +3200,7 @@ class DeviceManager(object):  # pylint: disable=useless-object-inheritance
     devices."""
     # pylint: disable=too-many-instance-attributes
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.codes = {key: dict(value) for key, value in EVENT_MAP}
         self._raw = []
         self.keyboards = []
@@ -3467,8 +3478,11 @@ SPIN_UP_MOTOR = (
 
 class MicroBitPad(GamePad):
     """A BBC Micro:bit flashed with bitio."""
-    def __init__(self, manager, device_path=None,
-                 char_path_override=None):
+    def __init__(self,
+        manager,
+        device_path=None,
+        char_path_override=None,
+    ) -> None:
         if not device_path:
             device_path = '/dev/input/by-id/dialup-BBC_MicroBit-event-joystick'
             if not char_path_override:
@@ -3570,7 +3584,7 @@ class MicroBitListener(BaseListener):
     """Tracks the current state and sends changes to the MicroBitPad
     device class."""
 
-    def __init__(self, pipe):
+    def __init__(self, pipe) -> None:
         super(MicroBitListener, self).__init__(pipe)
         self.active = True
         self.events = []
@@ -3704,9 +3718,7 @@ def get_gamepad(index:Optional[int] = None):
 
 
 
-# Add ability to rescan for devices. (Chase Kidder 2021)
-# Code by: j3kestrel
-# https://github.com/zeth/inputs/pull/99
+# Add ability to rescan for devices. (fix by: j3kestrel) https://github.com/zeth/inputs/pull/99
 def rescan_devices():
     """Rescan all connected devices."""
     global devices
