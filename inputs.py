@@ -1,5 +1,8 @@
 """Inputs - user input for humans.
 
+Fork by trevorablett that optionally allows the gamepad not to block
+execution.
+
 Inputs aims to provide easy to use, cross-platform, user input device
 support for Python. I.e. keyboards, mice, gamepads, etc.
 
@@ -58,6 +61,7 @@ from operator import itemgetter
 from multiprocessing import Process, Pipe
 
 import ctypes
+import fcntl
 
 
 
@@ -2390,12 +2394,14 @@ class InputDevice(object):  # pylint: disable=useless-object-inheritance
         device_path = None,
         char_path_override = None,
         read_size:int = 1,
+        read_block = True,
     ) -> None:
         self.read_size = read_size
         self.manager = manager
         self.__pipe = None
         self._listener = None
         self.leds = None
+        self.read_block = read_block
         if device_path:
             self._device_path = device_path
         else:
@@ -2434,7 +2440,7 @@ class InputDevice(object):  # pylint: disable=useless-object-inheritance
     def _set_name(self):
         if NIX:
             with open("/sys/class/input/%s/device/name" %
-                      self.get_char_name()) as name_file:
+                    self.get_char_name(), errors="ignore") as name_file:
                 self.name = name_file.read().strip()
             self.leds = []
 
@@ -2473,12 +2479,12 @@ class InputDevice(object):  # pylint: disable=useless-object-inheritance
                 self._character_file = io.BytesIO()
                 return self._character_file
             try:
-                self._character_file = io.open(self._character_device_path, 'rb')
-                # Fix blocking in event read loop. (fix by: Erik Orjehag) https://github.com/zeth/inputs/issues/7
-                fd = self._character_file.fileno()
-                flag = fcntl.fcntl(fd, fcntl.F_GETFL)
-                fcntl.fcntl(fd, fcntl.F_SETFL, flag | os.O_NONBLOCK)
-
+                self._character_file = io.open(
+                    self._character_device_path, 'rb')
+                if not self.read_block:
+                    fn = self._character_file.fileno()
+                    flag = fcntl.fcntl(fn, fcntl.F_GETFL)
+                    fcntl.fcntl(fn, fcntl.F_SETFL, flag | os.O_NONBLOCK)
             except PermissionError:
                 # Python 3
                 raise PermissionError(PERMISSIONS_ERROR_TEXT)
@@ -2494,8 +2500,14 @@ class InputDevice(object):  # pylint: disable=useless-object-inheritance
     def __iter__(self):
         while True:
             event = self._do_iter()
-            if event:
-                yield event
+            if self.read_block:
+                if event:
+                    yield event
+            else:
+                if event:
+                    yield event
+                else:
+                    yield []
 
     def _get_data(self, read_size):
         """Get data from the character device."""
@@ -2516,8 +2528,11 @@ class InputDevice(object):  # pylint: disable=useless-object-inheritance
         return read_size
 
     def _do_iter(self):
-        read_size = self._get_total_read_size()
-        data = self._get_data(read_size)
+        if self.read_block:
+            read_size = self._get_total_read_size()
+            data = self._get_data(read_size)
+        else:
+            data = self._get_data(-1)  # get all data that is in the buffer
         if not data:
             time.sleep(0.001)
             return None
@@ -2579,6 +2594,12 @@ class Keyboard(InputDevice):
     Original umapped scan code, followed by the important key info
     followed by a sync.
     """
+    def __init__(self, manager, device_path, char_path_override, read_block):
+        super(Keyboard, self).__init__(manager,
+                                      device_path,
+                                      char_path_override,
+                                      read_block=read_block)
+
     def _set_device_path(self):
         super(Keyboard, self)._set_device_path()
         if MAC:
@@ -2680,10 +2701,17 @@ class GamePad(InputDevice):
         manager,
         device_path,
         char_path_override=None,
+        read_block=True,
     ) -> None:
-        super(GamePad, self).__init__(manager, device_path, char_path_override)
+        super(GamePad, self).__init__(
+            manager,
+            device_path,
+            char_path_override,
+            read_block=read_block,
+            )
         self._write_file = None
         self.__device_number = None
+        self.read_block = read_block
         if WIN:
             if "Microsoft_Corporation_Controller" in self._device_path:
                 self.name = "Microsoft X-Box 360 pad"
@@ -2718,8 +2746,14 @@ class GamePad(InputDevice):
             if WIN:
                 self.__check_state()
             event = self._do_iter()
-            if event:
-                yield event
+            if self.read_block:
+                if event:
+                    yield event
+            else:
+                if event:
+                    yield event
+                else:
+                    yield []
 
     def __check_state(self):
         """On Windows, check the state and fill the event character device."""
@@ -3201,7 +3235,7 @@ class DeviceManager(object):  # pylint: disable=useless-object-inheritance
     devices."""
     # pylint: disable=too-many-instance-attributes
 
-    def __init__(self) -> None:
+    def __init__(self, gamepad_read_block=True, keyboard_read_block=True):
         self.codes = {key: dict(value) for key, value in EVENT_MAP}
         self._raw = []
         self.keyboards = []
@@ -3213,6 +3247,8 @@ class DeviceManager(object):  # pylint: disable=useless-object-inheritance
         self.microbits = []
         self.xinput = None
         self.xinput_dll = None
+        self.gamepad_read_block = gamepad_read_block
+        self.keyboard_read_block = keyboard_read_block
         if WIN:
             self._raw_device_counts = {
                 'mice': 0,
@@ -3260,20 +3296,29 @@ class DeviceManager(object):  # pylint: disable=useless-object-inheritance
         self._raw.append(realpath)
 
         # 3. All seems good, append the device to the relevant list.
-        if device_type == 'kbd':
-            self.keyboards.append(Keyboard(self, device_path,
-                                           char_path_override))
-        elif device_type == 'mouse':
-            self.mice.append(Mouse(self, device_path,
-                                   char_path_override))
-        elif device_type == 'joystick':
-            self.gamepads.append(GamePad(self,
-                                         device_path,
-                                         char_path_override))
-        else:
-            self.other_devices.append(OtherDevice(self,
-                                                  device_path,
-                                                  char_path_override))
+
+        # add a try except in case a device has been unplugged, and no longer has relevant files in
+        # /sys/class/input
+
+        try:
+            if device_type == 'kbd':
+                self.keyboards.append(Keyboard(self, device_path,
+                                               char_path_override,
+                                               read_block=self.keyboard_read_block))
+            elif device_type == 'mouse':
+                self.mice.append(Mouse(self, device_path,
+                                       char_path_override))
+            elif device_type == 'joystick':
+                self.gamepads.append(GamePad(self,
+                                             device_path,
+                                             char_path_override,
+                                             read_block=self.gamepad_read_block))
+            else:
+                self.other_devices.append(OtherDevice(self,
+                                                      device_path,
+                                                      char_path_override))
+        except FileNotFoundError:
+            pass
 
     def _find_xinput(self):
         """Find most recent xinput library."""
@@ -3326,7 +3371,8 @@ class DeviceManager(object):  # pylint: disable=useless-object-inheritance
                     "/dev/input/by_id/" +
                     "usb-Microsoft_Corporation_Controller_%s-event-joystick"
                     % device_number)
-                self.gamepads.append(GamePad(self, device_path))
+                self.gamepads.append(GamePad(self, device_path,
+                                             read_block=self.gamepad_read_block))
                 continue
             if res != XINPUT_ERROR_DEVICE_NOT_CONNECTED:
                 raise RuntimeError(
@@ -3415,12 +3461,13 @@ class DeviceManager(object):  # pylint: disable=useless-object-inheritance
             if char_name in charnames:
                 continue
             name_file = os.path.join(eventdir, 'device', 'name')
-            with open(name_file) as name_file:
-                device_name = name_file.read().strip()
-                if device_name in self.codes['specials']:
-                    self._parse_device_path(
-                        self.codes['specials'][device_name],
-                        os.path.join('/dev/input', char_name))
+            if os.path.isfile(name_file):
+                with open(name_file, errors="ignore") as name_file:
+                    device_name = name_file.read().strip()
+                    if device_name in self.codes['specials']:
+                        self._parse_device_path(
+                            self.codes['specials'][device_name],
+                            os.path.join('/dev/input', char_name))
 
     def __iter__(self):
         return iter(self.all_devices)
@@ -3687,8 +3734,7 @@ class MicroBitListener(BaseListener):
         self.write_to_pipe(self.events)
 
 
-
-devices = DeviceManager()  # pylint: disable=invalid-name
+devices = DeviceManager(gamepad_read_block=False, keyboard_read_block=False)  # pylint: disable=invalid-name
 
 
 
