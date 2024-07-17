@@ -55,6 +55,7 @@ import platform
 import math
 import time
 import codecs
+import functools
 from warnings import warn
 from itertools import count
 from operator import itemgetter
@@ -3017,6 +3018,10 @@ class GamePad(InputDevice):
                                      self.__device_number))
         stop_process.start()
 
+    # We seem to be limited to 16 ioctl lookups, at least within a span of a few
+    # minutes. Need to to more investigation into why, but as a short-term fix
+    # we can just cache the vibration codes (as long as we don't need too many)
+    @functools.cache
     def __get_vibration_code(self, left_motor, right_motor, duration):
         """This is some crazy voodoo, if you can simplify it, please do."""
         inner_event = struct.pack(
