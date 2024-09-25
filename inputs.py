@@ -51,6 +51,7 @@ import sys
 import io
 import glob
 import struct
+import logging
 import platform
 import math
 import time
@@ -66,7 +67,8 @@ import fcntl
 
 
 
-__version__ = "0.5.4`"
+__version__ = "0.5.5"
+log = logging.getLogger('inputs')
 
 
 
@@ -1456,7 +1458,10 @@ class UnknownEventType(IndexError):
 
 class UnknownEventCode(IndexError):
     """We don't know what this event is."""
-    pass
+    def __init__(self, *args, name='', code=-1):
+        super().__init__(*args)
+        self.name = name
+        self.code = code
 
 
 class InputEvent(object):  # pylint: disable=useless-object-inheritance
@@ -2538,7 +2543,13 @@ class InputDevice(object):  # pylint: disable=useless-object-inheritance
             time.sleep(0.001)
             return None
         evdev_objects = iter_unpack(data)
-        events = [self._make_event(*event) for event in evdev_objects] #type:ignore
+        events = []
+        for event in evdev_objects:
+            try:
+                events.append(self._make_event(*event))
+            except UnknownEventCode as e:
+                log.error('Unknown event! Got %s(%s)', e.name, e.code)
+                pass
         return events
 
     # pylint: disable=too-many-arguments
@@ -3501,7 +3512,7 @@ class DeviceManager(object):  # pylint: disable=useless-object-inheritance
         try:
             return self.codes[evtype][code]
         except KeyError:
-            raise UnknownEventCode("We don't know this event.", evtype, code)
+            raise UnknownEventCode("We don't know this event.", name=evtype, code=code)
 
     def get_typecode(self, name):
         """Returns type code for `name`."""
@@ -3774,4 +3785,4 @@ def get_gamepad(index:Optional[int] = None):
 def rescan_devices():
     """Rescan all connected devices."""
     global devices
-    devices = DeviceManager()
+    devices = DeviceManager(gamepad_read_block=False, keyboard_read_block=False)

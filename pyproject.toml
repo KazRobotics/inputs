@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "inputs"
-version = "0.5.4"
+version = "0.5.5"
 description = ""
 authors = ["Forked from Zeth, with contributions from several good folks"]
 
